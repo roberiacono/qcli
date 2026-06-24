@@ -2,7 +2,7 @@
 
 A minimal Unix-style CLI for interacting with a local LLM server (llama.cpp / Qwen models).
 
-qcli sends prompts to a local llama.cpp server and prints clean responses in the terminal, without heavy dependencies or frameworks.
+qcli sends prompts to a local llama.cpp server and streams responses token by token in the terminal, without heavy dependencies or frameworks.
 
 ---
 
@@ -11,9 +11,11 @@ qcli sends prompts to a local llama.cpp server and prints clean responses in the
 - Minimal C implementation
 - Only dependency: libcurl
 - Works with llama.cpp server
-- Clean terminal output
+- Streaming output (tokens appear as they generate)
+- `<think>` reasoning blocks rendered in dim color
+- `--no-think` flag to skip chain-of-thought entirely
+- Stats: token count, TTFT, and t/s after each response
 - Scriptable (pipe-friendly)
-- Fast and lightweight
 
 ---
 
@@ -39,14 +41,13 @@ Start the local model server:
   -m ../models/qwen3/Qwen3-1.7B-Q4_K_M.gguf \
   -t 2 \
   -c 4096 \
-  --parallel 1 \
+  --parallel 1
 ```
 
 Key flags:
-
 - `-t 2` — physical core count (hyperthreads hurt inference on older CPUs; benchmark `-t 1`, `-t 2`, `-t 4`)
+- `-c 4096` — context window; must be large enough for thinking tokens + prompt + answer
 - `--parallel 1` — single request slot, avoids allocating 4x KV cache for unused slots
-- `-fa off` — flash attention, reduces memory bandwidth pressure
 
 Server runs at:
 
@@ -74,7 +75,29 @@ make clean
 ./qcli "Explain quicksort"
 ```
 
-![qcli output](assets/images/Screenshot%20from%202026-06-24%2013-13-57.png)
+With thinking disabled (faster, no chain-of-thought):
+
+```bash
+./qcli --no-think "Explain quicksort"
+```
+
+![qcli output](assets/images/Screenshot%20from%202026-06-24%2013-44-11.png)
+
+---
+
+## Output
+
+Each response ends with a stats line on stderr:
+
+```
+[42 tok | TTFT 0.82s | 7.2 t/s]
+```
+
+- **tok** — number of output tokens generated
+- **TTFT** — time to first token (request sent → first token received)
+- **t/s** — average generation speed
+
+Thinking tokens are shown in dim gray; the answer follows in normal color. Use `--no-think` to skip thinking entirely.
 
 ---
 
@@ -83,7 +106,7 @@ make clean
 1. Start server
 
 ```bash
-./llama-server -m model.gguf -t 2 -c 512 --parallel 1 -fa
+./build/bin/llama-server -m ../models/qwen3/Qwen3-1.7B-Q4_K_M.gguf -t 2 -c 4096 --parallel 1
 ```
 
 2. Run CLI
@@ -107,7 +130,7 @@ make clean
 ## Limitations
 
 - Requires running llama.cpp server
-- Basic JSON parsing (SSE)
+- Basic SSE/JSON parsing
 - Experimental project
 
 ---
