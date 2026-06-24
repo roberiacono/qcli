@@ -10,9 +10,13 @@ typedef struct {
     char buf[4096];
     int len;
     int token_count;
+    int in_think;
+    int first_token_seen;
+    struct timespec t0;
+    struct timespec tfirst;
 } stream_state;
 
-static int process_sse_line(const char *line) {
+static int process_sse_line(stream_state *s, const char *line) {
     const char *prefix = "data: ";
     if (strncmp(line, prefix, 6) != 0) return 0;
 
@@ -22,6 +26,28 @@ static int process_sse_line(const char *line) {
     if (!start) return 0;
 
     start += strlen(key);
+
+    /* check for closing quote immediately (empty content) */
+    if (*start == '"') return 0;
+
+    /* detect <think> / </think> tags arriving as their own tokens */
+    if (strncmp(start, "<think>\"", 8) == 0) {
+        s->in_think = 1;
+        fprintf(stdout, "\033[2m");
+        fflush(stdout);
+        return 1;
+    }
+    if (strncmp(start, "</think>\"", 9) == 0) {
+        s->in_think = 0;
+        fprintf(stdout, "\033[0m\n");
+        fflush(stdout);
+        return 1;
+    }
+
+    if (!s->first_token_seen) {
+        clock_gettime(CLOCK_MONOTONIC, &s->tfirst);
+        s->first_token_seen = 1;
+    }
 
     int wrote = 0;
     while (*start) {
@@ -51,7 +77,7 @@ static size_t stream_callback(void *ptr, size_t size, size_t nmemb, void *userda
     for (size_t i = 0; i < total; i++) {
         if (in[i] == '\n') {
             s->buf[s->len] = '\0';
-            if (s->len > 0) s->token_count += process_sse_line(s->buf);
+            if (s->len > 0) s->token_count += process_sse_line(s, s->buf);
             s->len = 0;
         } else if (s->len < (int)sizeof(s->buf) - 1) {
             s->buf[s->len++] = in[i];
@@ -70,10 +96,12 @@ int main(int argc, char **argv) {
     if (!curl) return 1;
 
     stream_state s = {0};
+    clock_gettime(CLOCK_MONOTONIC, &s.t0);
 
     char json[4096];
     snprintf(json, sizeof(json),
-        "{\"prompt\":\"%s\",\"n_predict\":256,\"stream\":true}",
+        "{\"prompt\":\"<|im_start|>user\\n%s<|im_end|>\\n<|im_start|>assistant\\n\","
+        "\"n_predict\":2048,\"stream\":true,\"stop\":[\"<|im_end|>\"]}",
         argv[1]
     );
 
@@ -86,20 +114,23 @@ int main(int argc, char **argv) {
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &s);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
-    struct timespec t0, t1;
-    clock_gettime(CLOCK_MONOTONIC, &t0);
-
     CURLcode res = curl_easy_perform(curl);
 
+    struct timespec t1;
     clock_gettime(CLOCK_MONOTONIC, &t1);
+
+    /* ensure color is reset if response was interrupted mid-think */
+    if (s.in_think) fprintf(stdout, "\033[0m");
 
     if (res != CURLE_OK) {
         fprintf(stderr, "curl error\n");
     } else {
         printf("\n");
         if (s.token_count > 0) {
-            double elapsed = (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1e9;
-            fprintf(stderr, "[%d tokens · %.1f t/s]\n", s.token_count, s.token_count / elapsed);
+            double total   = (t1.tv_sec      - s.t0.tv_sec)     + (t1.tv_nsec      - s.t0.tv_nsec)     / 1e9;
+            double ttft    = (s.tfirst.tv_sec - s.t0.tv_sec)     + (s.tfirst.tv_nsec - s.t0.tv_nsec)    / 1e9;
+            double tps     = s.token_count / total;
+            fprintf(stderr, "[%d tok | TTFT %.2fs | %.1f t/s]\n", s.token_count, ttft, tps);
         }
     }
 

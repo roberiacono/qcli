@@ -38,15 +38,15 @@ Start the local model server:
 ./build/bin/llama-server \
   -m ../models/qwen3/Qwen3-1.7B-Q4_K_M.gguf \
   -t 2 \
-  -c 512 \
+  -c 4096 \
   --parallel 1 \
-  -fa
 ```
 
 Key flags:
+
 - `-t 2` — physical core count (hyperthreads hurt inference on older CPUs; benchmark `-t 1`, `-t 2`, `-t 4`)
 - `--parallel 1` — single request slot, avoids allocating 4x KV cache for unused slots
-- `-fa` — flash attention, reduces memory bandwidth pressure
+- `-fa off` — flash attention, reduces memory bandwidth pressure
 
 Server runs at:
 
