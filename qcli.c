@@ -87,8 +87,16 @@ static size_t stream_callback(void *ptr, size_t size, size_t nmemb, void *userda
 }
 
 int main(int argc, char **argv) {
-    if (argc < 2) {
-        fprintf(stderr, "usage: qcli \"prompt\"\n");
+    int no_think = 0;
+    int prompt_idx = 1;
+
+    if (argc >= 2 && strcmp(argv[1], "--no-think") == 0) {
+        no_think = 1;
+        prompt_idx = 2;
+    }
+
+    if (argc < prompt_idx + 1) {
+        fprintf(stderr, "usage: qcli [--no-think] \"prompt\"\n");
         return 1;
     }
 
@@ -100,9 +108,10 @@ int main(int argc, char **argv) {
 
     char json[4096];
     snprintf(json, sizeof(json),
-        "{\"prompt\":\"<|im_start|>user\\n%s<|im_end|>\\n<|im_start|>assistant\\n\","
+        "{\"prompt\":\"<|im_start|>user\\n%s%s<|im_end|>\\n<|im_start|>assistant\\n\","
         "\"n_predict\":2048,\"stream\":true,\"stop\":[\"<|im_end|>\"]}",
-        argv[1]
+        argv[prompt_idx],
+        no_think ? " /no_think" : ""
     );
 
     struct curl_slist *headers = NULL;
