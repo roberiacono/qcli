@@ -36,10 +36,17 @@ Start the local model server:
 
 ```bash
 ./build/bin/llama-server \
-  -m ~/models/qwen3/Qwen3-1.7B-Q4_K_M.gguf \
-  -t 4 \
-  -c 512
+  -m ../models/qwen3/Qwen3-1.7B-Q4_K_M.gguf \
+  -t 2 \
+  -c 512 \
+  --parallel 1 \
+  -fa
 ```
+
+Key flags:
+- `-t 2` — physical core count (hyperthreads hurt inference on older CPUs; benchmark `-t 1`, `-t 2`, `-t 4`)
+- `--parallel 1` — single request slot, avoids allocating 4x KV cache for unused slots
+- `-fa` — flash attention, reduces memory bandwidth pressure
 
 Server runs at:
 
@@ -50,7 +57,13 @@ http://localhost:8080
 ## Build qcli
 
 ```bash
-gcc qcli.c -o qcli -lcurl
+make
+```
+
+To remove the binary:
+
+```bash
+make clean
 ```
 
 ---
@@ -66,11 +79,13 @@ gcc qcli.c -o qcli -lcurl
 ## Example Workflow
 
 1. Start server
+
 ```bash
-./llama-server -m model.gguf -t 4 -c 512
+./llama-server -m model.gguf -t 2 -c 512 --parallel 1 -fa
 ```
 
 2. Run CLI
+
 ```bash
 ./qcli "What is recursion?"
 ```
@@ -90,19 +105,30 @@ gcc qcli.c -o qcli -lcurl
 ## Limitations
 
 - Requires running llama.cpp server
-- No streaming output yet
-- Basic JSON parsing
+- Basic JSON parsing (SSE)
 - Experimental project
 
 ---
 
 ## Future Improvements
 
-- Streaming responses
 - Interactive REPL
 - History support
 - Raw socket HTTP implementation
 - Config file support
+
+---
+
+## Tested Hardware
+
+Verified working on:
+
+- **CPU:** Intel Core i5-2450M @ 2.50GHz (2 physical cores / 4 threads, Sandy Bridge)
+- **RAM:** 8 GB
+- **GPU:** None (CPU-only inference)
+- **OS:** Linux
+- **Model:** Qwen3-1.7B-Q4_K_M.gguf
+- **Throughput:** ~6 t/s with the server flags above
 
 ---
 
