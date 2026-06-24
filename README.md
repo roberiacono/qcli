@@ -74,6 +74,8 @@ make clean
 ./qcli "Explain quicksort"
 ```
 
+![qcli output](assets/images/Screenshot%20from%202026-06-24%2013-13-57.png)
+
 ---
 
 ## Example Workflow
